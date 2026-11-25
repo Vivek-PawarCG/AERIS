@@ -8,6 +8,75 @@ interface GenerationContext {
   apiKey?: string;
 }
 
+const CANDIDATE_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.8-flash',
+];
+
+/**
+ * Sanitizes and strips quotes/whitespace from user-entered Gemini API keys.
+ * Supports legacy AIza... keys and new Google AI Studio AQ.... auth keys.
+ */
+export function sanitizeApiKey(raw: string): string {
+  if (!raw) return '';
+  return raw.trim().replace(/^["'`]|["'`]$/g, '').trim();
+}
+
+/**
+ * Validates a Gemini API key against Google Generative Language API.
+ */
+export async function testGeminiApiKey(rawKey: string): Promise<{
+  success: boolean;
+  model?: string;
+  error?: string;
+}> {
+  const key = sanitizeApiKey(rawKey);
+  if (!key || key.length < 5) {
+    return { success: false, error: 'Key is too short or empty.' };
+  }
+
+  let lastError = 'Unable to reach Google Gemini API.';
+
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Respond with OK' }] }],
+          generationConfig: { maxOutputTokens: 5 },
+        }),
+      });
+
+      if (res.ok) {
+        return { success: true, model };
+      }
+
+      const errText = await res.text();
+      try {
+        const parsed = JSON.parse(errText);
+        lastError = parsed?.error?.message || `HTTP ${res.status}: ${res.statusText}`;
+      } catch {
+        lastError = `HTTP ${res.status}: ${errText.slice(0, 120)}`;
+      }
+
+      // If it's a 404, try the next model; if it's 400/403 (invalid key), stop immediately
+      if (res.status === 400 || res.status === 403) {
+        return { success: false, error: lastError };
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  return { success: false, error: lastError };
+}
+
 /**
  * High-performance GenAI Environmental Health & Atmospheric Intelligence Engine
  * Integrates directly with Google Gemini API when an API key is available,
@@ -18,27 +87,71 @@ export async function generateAtmosphericAdvice(ctx: GenerationContext): Promise
   citations: string[];
   tags: string[];
 }> {
+  const cleanKey = sanitizeApiKey(ctx.apiKey || '');
+
   // If user has provided a Gemini API Key, attempt live call to Gemini API
-  if (ctx.apiKey && ctx.apiKey.trim().length > 10) {
+  if (cleanKey.length > 5) {
     try {
-      const response = await callGeminiAPI(ctx);
-      if (response) {
-        return response;
+      const liveResponse = await callGeminiAPI(ctx, cleanKey);
+      if (liveResponse.success && liveResponse.data) {
+        return liveResponse.data;
+      }
+
+      // If key explicitly failed with an API error, inform user clearly
+      if (liveResponse.error) {
+        const fallback = generateDeterministicScientificAdvice(ctx);
+        const maskedKey = cleanKey.length > 10
+          ? `${cleanKey.slice(0, 6)}...${cleanKey.slice(-4)}`
+          : 'provided key';
+
+        return {
+          text: `### ⚠️ Google Gemini API Notice (${liveResponse.status || 'Auth/Quota'})\n\nGoogle's Gemini service returned the following error for \`${maskedKey}\`:\n> **${liveResponse.error}**\n\n#### Troubleshooting:\n1. **Google AI Studio Key**: Ensure your key was copied from [Google AI Studio](https://aistudio.google.com/app/apikey) without extra characters.\n2. **Generative Language API**: Ensure the linked Google Cloud project has the Generative Language API enabled with active quota.\n\n---\n\n#### Local Clean Air Guidance for ${ctx.atmospheric.cityName}:\n\n${fallback.text}`,
+          citations: [
+            ...fallback.citations,
+            'Google Generative Language API Documentation',
+          ],
+          tags: ['API Notice', 'Local Expert Active', ...fallback.tags],
+        };
+      }
+
+      // If key explicitly failed with an API error, inform user clearly
+      if (liveResponse.error) {
+        const fallback = generateDeterministicScientificAdvice(ctx);
+        const maskedKey = cleanKey.length > 10 
+          ? `${cleanKey.slice(0, 6)}...${cleanKey.slice(-4)}`
+          : 'provided key';
+
+        return {
+          text: `### ⚠️ Google Gemini API Notice (${liveResponse.status || 'Auth/Quota'})\n\nGoogle's Gemini service returned the following error for \`${maskedKey}\`:\n> **${liveResponse.error}**\n\n#### Troubleshooting:\n1. **Google AI Studio Key**: Ensure your key was copied from [Google AI Studio](https://aistudio.google.com/app/apikey) without extra characters.\n2. **Generative Language API**: Ensure the linked Google Cloud project has the Generative Language API enabled with active quota.\n\n---\n\n#### Local Clean Air Guidance for ${ctx.atmospheric.cityName}:\n\n${fallback.text}`,
+          citations: [
+            ...fallback.citations,
+            'Google Generative Language API Documentation',
+          ],
+          tags: ['API Notice', 'Local Expert Active', ...fallback.tags],
+        };
       }
     } catch (err) {
-      console.warn('Gemini API call encountered an issue, falling back to autonomous scientific reasoning engine:', err);
+      console.warn('Gemini API call encountered an unexpected error:', err);
     }
   }
 
-  // Autonomous high-fidelity scientific reasoning engine
+  // Autonomous high-fidelity scientific reasoning engine (zero-key fallback)
   return generateDeterministicScientificAdvice(ctx);
 }
 
-async function callGeminiAPI(ctx: GenerationContext): Promise<{
-  text: string;
-  citations: string[];
-  tags: string[];
-} | null> {
+async function callGeminiAPI(
+  ctx: GenerationContext,
+  apiKey: string
+): Promise<{
+  success: boolean;
+  data?: {
+    text: string;
+    citations: string[];
+    tags: string[];
+  };
+  error?: string;
+  status?: number;
+}> {
   const prompt = `You are AERIS, an expert atmospheric scientist, aerosol engineer, and clinical environmental health advisor.
 Context:
 - Location: ${ctx.atmospheric.cityName} (${ctx.atmospheric.region})
@@ -62,38 +175,72 @@ Instructions:
 3. Explain the direct physiological and community impact of your recommendations.
 4. Avoid marketing slop, excessive buzzwords, or generic disclaimers. Speak like a senior aerosol scientist and physician.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(ctx.apiKey!.trim())}`;
+  let lastError = 'No response from Gemini API';
+  let lastStatus = 0;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 1000,
-      },
-    }),
-  });
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errorBody}`);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1000,
+          },
+        }),
+      });
+
+      lastStatus = response.status;
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        try {
+          const parsed = JSON.parse(errorBody);
+          lastError = parsed?.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          lastError = `HTTP ${response.status}: ${errorBody.slice(0, 150)}`;
+        }
+
+        // If 404 (model not available for this key), try next model candidate
+        if (response.status === 404) {
+          continue;
+        }
+
+        return { success: false, error: lastError, status: lastStatus };
+      }
+
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        lastError = 'Gemini returned an empty candidate response.';
+        continue;
+      }
+
+      return {
+        success: true,
+        data: {
+          text,
+          citations: [
+            'WHO Global Air Quality Guidelines (2021 update)',
+            'ASHRAE Standard 62.2 Ventilation and Indoor Air Quality',
+            'UC Davis & Dr. Richard Corsi / Jim Rosenthal Aerosol Chamber Studies',
+          ],
+          tags: ['Live Gemini AI', model, 'Aerosol Science'],
+        },
+      };
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
   }
 
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) return null;
-
-  return {
-    text,
-    citations: [
-      'WHO Global Air Quality Guidelines (2021 update)',
-      'ASHRAE Standard 62.2 Ventilation and Indoor Air Quality',
-      'UC Davis & Dr. Richard Corsi / Jim Rosenthal Aerosol Chamber Studies',
-    ],
-    tags: ['Live Gemini-3.5', 'Aerosol Science', 'Tailored Recommendation'],
-  };
+  return { success: false, error: lastError, status: lastStatus };
 }
 
 function generateDeterministicScientificAdvice(ctx: GenerationContext): {

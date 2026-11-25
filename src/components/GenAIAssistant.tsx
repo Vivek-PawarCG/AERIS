@@ -70,7 +70,7 @@ export const GenAIAssistant: React.FC = () => {
               ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
               : 'bg-aeris-bg text-aeris-accent border border-aeris-border'
             }`}>
-            {apiKey ? 'Live Gemini 3.5 Model' : 'Offline Scientific Helper'}
+            {apiKey ? `Live Gemini AI (${apiKey.startsWith('AQ.') ? 'Auth Key' : 'API Key'})` : 'Offline Scientific Helper'}
           </span>
         </div>
       </section>
@@ -102,9 +102,21 @@ export const GenAIAssistant: React.FC = () => {
                     : 'bg-aeris-bg border border-aeris-border text-aeris-body rounded-tl-none shadow-sm'
                   }`}>
                   <div className="flex items-center justify-between text-[10px] text-aeris-muted pb-1 border-b border-white/10">
-                    <span className="font-semibold text-aeris-heading">
-                      {isUser ? 'You' : 'Clean Air Helper'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-aeris-heading">
+                        {isUser ? 'You' : 'Clean Air Helper'}
+                      </span>
+                      {!isUser && msg.tags?.includes('Live Gemini AI') && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono text-[9px]">
+                          Live Gemini
+                        </span>
+                      )}
+                      {!isUser && msg.tags?.includes('API Notice') && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-mono text-[9px]">
+                          API Notice
+                        </span>
+                      )}
+                    </div>
                     <span className="font-mono">{msg.timestamp}</span>
                   </div>
 

@@ -79,4 +79,31 @@ describe('GenAI Atmospheric Intelligence Engine', () => {
     expect(response.text.toLowerCase()).toContain('nitrogen dioxide');
     expect(response.text).toContain('microfiber');
   });
+
+  it('connects to Live Gemini API when valid AQ. or AIza key is supplied', async () => {
+    const response = await generateAtmosphericAdvice({
+      atmospheric: mockAtmospheric,
+      household: mockHousehold,
+      query: 'How to protect our family today?',
+      chatHistory: [],
+      apiKey: 'AQ.Ab8R99_valid_test_key_12345',
+    });
+
+    expect(response.text).toContain('Live Gemini response');
+    expect(response.tags).toContain('Live Gemini AI');
+  });
+
+  it('returns explicit error notice and diagnostic guidance when API key is rejected by Google', async () => {
+    const response = await generateAtmosphericAdvice({
+      atmospheric: mockAtmospheric,
+      household: mockHousehold,
+      query: 'How to protect our family today?',
+      chatHistory: [],
+      apiKey: 'invalid_key_99999',
+    });
+
+    expect(response.text).toContain('Google Gemini API Notice');
+    expect(response.text).toContain('API key not valid');
+    expect(response.tags).toContain('API Notice');
+  });
 });

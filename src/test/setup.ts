@@ -102,6 +102,30 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     } as Response;
   }
 
+  if (url.includes('generativelanguage.googleapis.com')) {
+    if (url.includes('invalid_key')) {
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: async () => JSON.stringify({ error: { message: 'API key not valid. Please pass a valid API key.' } }),
+      } as Response;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Live Gemini response for atmospheric questions.' }],
+            },
+          },
+        ],
+      }),
+    } as Response;
+  }
+
   if (originalFetch) {
     return originalFetch(input, init);
   }
