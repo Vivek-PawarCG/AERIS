@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateAtmosphericAdvice } from '../services/aiAssistant';
-import { LOCATION_PRESETS } from '../data/mockAtmosphericData';
+import { LOCATION_PRESETS } from '../data/atmosphericPresets';
 
 describe('GenAI Atmospheric Intelligence Engine', () => {
   const mockAtmospheric = LOCATION_PRESETS[0]; // New Delhi
