@@ -7,7 +7,7 @@ import {
   ChatMessage, 
   CumulativeImpactStats 
 } from '../types';
-import { LOCATION_PRESETS, generateDiurnalForecast } from '../data/mockAtmosphericData';
+import { LOCATION_PRESETS, generateDiurnalForecast } from '../data/atmosphericPresets';
 import { IAQ_INTERVENTIONS } from '../data/iaqInterventions';
 import { calculateInhaledPM25, calculateAvoidedEmissions } from '../utils/calculators';
 import { generateAtmosphericAdvice } from '../services/aiAssistant';

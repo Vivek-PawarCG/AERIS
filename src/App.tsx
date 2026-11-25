@@ -10,6 +10,7 @@ import { GenAIAssistant } from './components/GenAIAssistant';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { HouseholdProfilerModal } from './components/HouseholdProfiler';
 import { OnboardingFlow } from './components/OnboardingFlow';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('telemetry');
@@ -71,9 +72,11 @@ const AppContent: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </ErrorBoundary>
   );
 };
 
